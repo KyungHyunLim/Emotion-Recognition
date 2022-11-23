@@ -1,0 +1,10 @@
+version: 1
+labels:
+  - label: "feature"
+    branch: "^(feature|Feature)/.*"
+  - label: "bugfix"
+    branch: "^(bugfix|Bugfix)/.*"
+  - label: "exp"
+    branch: "^(experiment|Experiment)/.*"
+  - label: "docs"
+    branch: "^docs/*"
