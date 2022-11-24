@@ -32,25 +32,6 @@ from daycon_erc.models.utils import get_model, get_tokenizer
 from daycon_erc.utils.utils import compute_metrics, read_config, set_seed
 
 
-
-def test(
-    args: ArgumentParser,
-    tokenizer: AutoTokenizer,
-    label_info: Dict,
-) -> Dict:
-    """
-    Description:
-        추론 및 submission 파일 생성 및 저장
-
-    Args:
-        args (ArgumentParser): 파라미터 설정 정보
-        data_reader (DataReader): 데이터를 가지고 있는 클래스
-        tokenizer (AutoTokenizer): 토크나이저
-        label_info (Dict): acd, ads 태스크 라벨 id to label, label to id 딕셔너리
-    """
-    pass
-
-
 def main() -> None:
     """
     Description:
