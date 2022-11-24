@@ -21,8 +21,10 @@ from typing import Dict
 
 from transformers import AutoTokenizer
 
+from daycon_erc.datasets.utils import load_data
+from daycon_erc.logger.logger import set_logger
 from daycon_erc.models.utils import get_tokenizer
-from daycon_erc.utils.utils import read_config
+from daycon_erc.utils.utils import read_config, set_seed
 
 
 def train(
@@ -73,12 +75,18 @@ def main() -> None:
     pars, _ = parser.parse_known_args()
 
     # 0. 학습 설정 로딩
+    set_seed(42)
     args = read_config(pars.config)
+    logger = set_logger()
 
     # 1. 토크나이저 불러오기
-    tokenizer = get_tokenizer(args.tokenizer)
+    tokenizer = get_tokenizer(args["Model"]["tokenizer"])
 
     # 2. 데이터 불러오기
+    train_data, eval_data, lb_to_id, id_to_lb = load_data(args["Data"]["data_path"])
+    num_labels = len(lb_to_id)
+
+    print(num_labels)
 
     # if args.do_train:
     #     train(args, data_reader, tokenizer, label_info)
