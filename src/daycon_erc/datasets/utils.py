@@ -9,144 +9,83 @@ Author:
     Email: fly1294@naver.com
 """
 
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Union
 
 import pandas as pd
-import torch
-from torch.utils.data import TensorDataset
-from transformers import AutoTokenizer
+from sklearn.model_selection import train_test_split
+
+from daycon_erc.utils.utils import label_dict
 
 
-def tokenize_and_align_labels(
-    tokenizer: AutoTokenizer,
-    form: str,
-    annotations: Tuple[str, List[str], str],
-    max_len: int,
-    label_info: Dict,
-) -> Union[Dict, Dict]:
+def load_data(
+    path: str,
+    test_path: str,
+) -> Union[Dict, Dict, Dict, Dict]:
     """
     Description:
-        학습을 위한 파이프라인
+        데이터의 경로를 받아 불러온 후, 정해진 formatting 방법에 따라 데이터를 재구성하여 반환
 
     Args:
-        tokenizer (AutoTokenizer): 토크나이저
-        form (str): 문장
-        annotations (List[str, List[str], str]): 라벨 E.g ["본품#편의성", ["부직포 포장", 5, 11], "positive"]
-        max_len (int): 토큰의 최대 길이
-        label_info (Dict): acd, ads 태스크 라벨 id to label, label to id 딕셔너리
+        path (str): 데이터 경로
+        test_path (str): 테스트 데이터 경로
 
     Returns:
-        TensorDataset
+        Union[Dict, Dict, Dict, Dict]
     """
 
-    ads_count = 0
-    acd_count = 0
+    data = pd.read_csv(path)
+    test_data = pd.read_csv(test_path)
 
-    acd_data_dict = {"input_ids": [], "attention_mask": [], "label": []}
-    ads_data_dict = {"input_ids": [], "attention_mask": [], "label": []}
+    dialogu_id = pd.unique(data["Dialogue_ID"])
+    train_id, eval_id = train_test_split(dialogu_id, test_size=0.1, random_state=42)
 
-    for pair in label_info["acd_pair"]:
-        isPairInOpinion = False
-        if pd.isna(form):
-            break
-        tokenized_data = tokenizer(
-            form,
-            pair,
-            padding="max_length",
-            max_length=max_len,
-            truncation=True,
-        )
-        for annotation in annotations:
-            acd = annotation[0]
-            ads = annotation[2]
+    train_data = data[data["Dialogue_ID"].isin(train_id)]
+    eval_data = data[data["Dialogue_ID"].isin(eval_id)]
 
-            # # 데이터가 =로 시작하여 수식으로 인정된경우
-            # if pd.isna(entity) or pd.isna(property):
-            #     continue
+    train_data = formmating(train_data, train_id, "train")
+    eval_data = formmating(eval_data, eval_id, "train")
+    test_data = formmating(test_data, list(pd.unique(test_data["Dialogue_ID"])), "test")
 
-            if ads == "------------":
-                continue
+    labels = pd.unique(data["Target"])
+    lb_to_id, id_to_lb = label_dict(labels)
 
-            if acd == pair:
-                ads_count += 1
-                acd_data_dict["input_ids"].append(tokenized_data["input_ids"])
-                acd_data_dict["attention_mask"].append(tokenized_data["attention_mask"])
-                acd_data_dict["label"].append(label_info["acd_name_to_id"]["True"])
-
-                ads_data_dict["input_ids"].append(tokenized_data["input_ids"])
-                ads_data_dict["attention_mask"].append(tokenized_data["attention_mask"])
-                ads_data_dict["label"].append(label_info["ads_name_to_id"][ads])
-
-                isPairInOpinion = True
-                break
-
-        if isPairInOpinion is False:
-            acd_count += 1
-            acd_data_dict["input_ids"].append(tokenized_data["input_ids"])
-            acd_data_dict["attention_mask"].append(tokenized_data["attention_mask"])
-            acd_data_dict["label"].append(label_info["acd_name_to_id"]["False"])
-
-    return acd_data_dict, ads_data_dict, ads_count, acd_count
+    return train_data, eval_data, test_data, lb_to_id, id_to_lb
 
 
-def get_dataset(
-    raw_data: List[List],
-    tokenizer: AutoTokenizer,
-    max_len: int,
-    label_info: Dict,
-) -> TensorDataset:
+def formmating(data: pd.DataFrame, dialogu_id: List[int], mode: str) -> Dict:
     """
     Description:
-        학습을 위한 파이프라인
+        DataFrame 형태의 데이터를 받아, formatting 후 Dictionary 형태로 반환
+        Dict: {
+            'sentence1': 이전 대화문 (없으면 [None])
+            'sentence2': 현재 대화문
+            'target': sentence2에 대한 감정
+            }
 
     Args:
-        raw_data (List[List]): 원본 데이터
-        tokenizer (AutoTokenizer): 토크나이저
-        max_len (int): 토큰의 최대 길이
-        label_info (Dict): acd, ads 태스크 라벨 id to label, label to id 딕셔너리
+        data (pd.DataFrame): 데이터
+        dialogu_id (int): 데이터 내 포함되어 있는 대화 id
+        mode (str): train or test
 
     Returns:
-        TensorDataset
+        Dict
     """
-    input_ids_list = []
-    attention_mask_list = []
-    token_labels_list = []
 
-    ads_input_ids_list = []
-    ads_attention_mask_list = []
-    ads_token_labels_list = []
+    pre_processed_data = {"sentence1": [], "sentence2": [], "target": []}
+    for d_id in dialogu_id:
+        temp = data[data["Dialogue_ID"] == d_id]
+        for cur, item in enumerate(
+            temp.values,
+        ):  # 0: ID, 1: Utterance, 2: Speaker, 3: Dialogue_ID, 4: Target
 
-    global_ads_count = 0
-    global_acd_count = 0
+            if cur == 0:
+                sentence1 = "[None]"
+            else:
+                sentence1 = temp.values[cur - 1][1]
 
-    for utterance in raw_data:
-        (acd_data_dict, ads_data_dict, ads_count, acd_count) = tokenize_and_align_labels(
-            tokenizer,
-            utterance["sentence_form"],
-            utterance["annotation"],
-            max_len,
-            label_info,
-        )
-        input_ids_list.extend(acd_data_dict["input_ids"])
-        attention_mask_list.extend(acd_data_dict["attention_mask"])
-        token_labels_list.extend(acd_data_dict["label"])
+            pre_processed_data["sentence1"].append(sentence1)
+            pre_processed_data["sentence2"].append(item[1])
+            if mode == "train":
+                pre_processed_data["target"].append(item[4])
 
-        ads_input_ids_list.extend(ads_data_dict["input_ids"])
-        ads_attention_mask_list.extend(ads_data_dict["attention_mask"])
-        ads_token_labels_list.extend(ads_data_dict["label"])
-
-        global_ads_count += ads_count
-        global_acd_count += acd_count
-
-    print("ads_data_count: ", global_ads_count)
-    print("acd_data_count: ", global_acd_count)
-
-    return TensorDataset(
-        torch.tensor(input_ids_list),
-        torch.tensor(attention_mask_list),
-        torch.tensor(token_labels_list),
-    ), TensorDataset(
-        torch.tensor(ads_input_ids_list),
-        torch.tensor(ads_attention_mask_list),
-        torch.tensor(ads_token_labels_list),
-    )
+    return pre_processed_data

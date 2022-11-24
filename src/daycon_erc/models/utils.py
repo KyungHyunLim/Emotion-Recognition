@@ -10,7 +10,8 @@ Author:
     Email: fly1294@naver.com
 """
 
-from transformers import AutoModel, AutoTokenizer
+
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 
 def get_tokenizer(tokenizer_name: str) -> AutoTokenizer:
@@ -30,18 +31,19 @@ def get_tokenizer(tokenizer_name: str) -> AutoTokenizer:
     return tokenizer
 
 
-def get_model(model_name: str) -> AutoModel:
+def get_model(model_name: str) -> AutoModelForSequenceClassification:
     """
     Description:
         모델의 이름을 이용해 모델 반환
-        Hugging face 모델의 경우, AutoModel 또는 태스크에 맞는 클래스 활용
+        Hugging face 모델의 경우, AutoModelForSequenceClassification 또는 태스크에 맞는 클래스 활용
+
         직접 커스텀한 모델의 경우, 경로를 이용해서 로딩 (틀을 허깅페이스에 맞추면 좋음)
 
     Args:
         model_name (str): 모델 이름 (허깅페이스용)
 
     Returns:
-        AutoModel
+        AutoModelForSequenceClassification
     """
-    model = AutoModel.from_pretrained(model_name)
+    model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=7)
     return model

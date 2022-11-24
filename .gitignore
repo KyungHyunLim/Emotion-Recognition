@@ -135,3 +135,5 @@ data/
 output/
 wandb/
 test.yaml
+train.yaml
+
