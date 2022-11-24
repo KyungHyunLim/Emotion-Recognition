@@ -3,15 +3,14 @@ Data:
   max_len: 256
 
 Model:
-  base_model: "klue/roberta-small"
-  tokenizer: "klue/roberta-small"
+  base_model: "tae898/emoberta-large"
+  tokenizer: "tae898/emoberta-large"
   w_output_dir: "./output/"
 
 Tranining:
-  batch_size: 8
+  batch_size: 32
   learning_rate: 0.00003
-  eps: 0.00000001
-  num_train_epochs: 3
+  num_train_epochs: 10
 
 Flag:
   do_train: 1
@@ -21,4 +20,4 @@ Flag:
 
 Wandb:
   project_name: "daycon-erc"
-  run_name: "base"
+  run_name: "emoberta-base"

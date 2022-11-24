@@ -19,12 +19,13 @@ import os
 from argparse import ArgumentParser
 from typing import Dict
 
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, Trainer, TrainingArguments
 
+from daycon_erc.datasets.dataset import SenseDataset
 from daycon_erc.datasets.utils import load_data
 from daycon_erc.logger.logger import set_logger
-from daycon_erc.models.utils import get_tokenizer
-from daycon_erc.utils.utils import read_config, set_seed
+from daycon_erc.models.utils import get_model, get_tokenizer
+from daycon_erc.utils.utils import compute_metrics, read_config, set_seed
 
 
 def train(
@@ -81,17 +82,52 @@ def main() -> None:
 
     # 1. 토크나이저 불러오기
     tokenizer = get_tokenizer(args["Model"]["tokenizer"])
+    special_tokens_dict = {
+        "additional_special_tokens": ["[None]"],
+    }
+    tokenizer.add_special_tokens(special_tokens_dict)
 
     # 2. 데이터 불러오기
     train_data, eval_data, lb_to_id, id_to_lb = load_data(args["Data"]["data_path"])
+    train_dataset = SenseDataset(args, train_data, tokenizer, lb_to_id)
+    eval_dataset = SenseDataset(args, eval_data, tokenizer, lb_to_id)
     num_labels = len(lb_to_id)
 
-    print(num_labels)
+    logger.log(10, f"[data info] train data: {len(train_data['sentence1'])}")
+    logger.log(10, f"[data info] eval data: {len(eval_data['sentence1'])}")
+    logger.log(10, f"[data info] num labels: {num_labels}")
 
-    # if args.do_train:
-    #     train(args, data_reader, tokenizer, label_info)
-    # elif args.do_test:
-    #     test(args, data_reader, tokenizer, label_info)
+    # 3. 모델 불러오기
+    model = get_model(args["Model"]["base_model"])
+    model.resize_token_embeddings(len(tokenizer))
+
+    # 4. 트레이너 셋팅
+    os.environ["WANDB_PROJECT"] = args["Wandb"]["project_name"]
+    trainargs = TrainingArguments(
+        output_dir=args["Model"]["w_output_dir"] + args["Wandb"]["run_name"],
+        overwrite_output_dir=False,
+        num_train_epochs=args["Tranining"]["num_train_epochs"],
+        learning_rate=args["Tranining"]["learning_rate"],
+        per_device_train_batch_size=args["Tranining"]["batch_size"],
+        per_device_eval_batch_size=args["Tranining"]["batch_size"],
+        evaluation_strategy="steps",
+        save_strategy="steps",
+        load_best_model_at_end=True,
+        metric_for_best_model="eval_whole macro f1 score",
+        save_total_limit=3,
+        fp16=True,
+        run_name=args["Wandb"]["run_name"],
+    )
+
+    trainer = Trainer(
+        model=model,
+        args=trainargs,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        compute_metrics=compute_metrics,
+    )
+
+    trainer.train()
 
 
 if __name__ == "__main__":

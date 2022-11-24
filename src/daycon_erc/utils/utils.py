@@ -15,6 +15,7 @@ from typing import Dict, List, Union
 import numpy as np
 import torch
 import yaml
+from sklearn.metrics import classification_report
 from torch.backends import cudnn
 
 
@@ -65,3 +66,30 @@ def set_seed(seed: int) -> None:
     cudnn.benchmark = False
     cudnn.deterministic = True
     random.seed(seed)
+
+
+def compute_metrics(pred: List[torch.Tensor]) -> Dict:
+    """
+    Description:
+        라벨 별 및 전체 metric 계산
+
+    Args:
+        pred (List[torch.Tensor]): target 및 예측값
+    """
+
+    labels = pred.label_ids
+    preds = pred.predictions.argmax(-1)
+
+    kind_of_labels = ["anger", "disgust", "fear", "joy", "neutral", "sadness", "surprise"]
+
+    # calculate accuracy using sklearn's function
+    result = classification_report(labels, preds, output_dict=True, target_names=kind_of_labels)
+
+    result_dict = {}
+    result_dict["whole macro f1 score"] = result["macro avg"]["f1-score"]
+    result_dict["acc"] = result["accuracy"]
+
+    for lb in kind_of_labels:
+        result_dict[f"{lb} f1 score"] = result[lb]["f1-score"]
+
+    return result_dict
