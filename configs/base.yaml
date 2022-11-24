@@ -1,5 +1,6 @@
 Data:
   data_path: "./data/train.csv"
+  test_data_path: "./data/test.csv"
   max_len: 256
 
 Model:
@@ -13,11 +14,8 @@ Tranining:
   num_train_epochs: 10
 
 Flag:
-  do_train: 1
-  do_eval: 1
-  do_test: 0
-  do_demo: 0
+  do_train: 0
 
 Wandb:
   project_name: "daycon-erc"
-  run_name: "emoberta-base"
+  run_name: "emoberta-base-ep"

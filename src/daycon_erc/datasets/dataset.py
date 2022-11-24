@@ -39,3 +39,28 @@ class SenseDataset(Dataset):
 
     def __len__(self) -> int:
         return len(self.labels)
+
+
+class SenseEvalDataset(Dataset):
+    """데이터셋 클래스"""
+
+    def __init__(self, args, raw_data, tokenizer) -> None:
+        super().__init__()
+
+        self.data = tokenizer(
+            raw_data["sentence1"],
+            raw_data["sentence2"],
+            max_length=args["Data"]["max_len"],
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
+            # return_token_type_ids=True
+        )
+        self.length = len(raw_data["sentence1"])
+
+    def __getitem__(self, index) -> Dict:
+        item = {key: val[index] for key, val in self.data.items()}
+        return item
+
+    def __len__(self) -> int:
+        return self.length

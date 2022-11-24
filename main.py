@@ -19,31 +19,17 @@ import os
 from argparse import ArgumentParser
 from typing import Dict
 
+import pandas as pd
+import torch
+from rich.progress import track
+from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, Trainer, TrainingArguments
 
-from daycon_erc.datasets.dataset import SenseDataset
+from daycon_erc.datasets.dataset import SenseDataset, SenseEvalDataset
 from daycon_erc.datasets.utils import load_data
 from daycon_erc.logger.logger import set_logger
 from daycon_erc.models.utils import get_model, get_tokenizer
 from daycon_erc.utils.utils import compute_metrics, read_config, set_seed
-
-
-def train(
-    args: ArgumentParser,
-    tokenizer: AutoTokenizer,
-    label_info: Dict,
-) -> None:
-    """
-    Description:
-        학습을 위한 파이프라인
-
-    Args:
-        args (ArgumentParser): 파라미터 설정 정보
-        data_reader (DataReader): 데이터를 가지고 있는 클래스
-        tokenizer (AutoTokenizer): 토크나이저
-        label_info (Dict): acd, ads 태스크 라벨 id to label, label to id 딕셔너리
-    """
-    pass
 
 
 def test(
@@ -87,47 +73,86 @@ def main() -> None:
     }
     tokenizer.add_special_tokens(special_tokens_dict)
 
-    # 2. 데이터 불러오기
-    train_data, eval_data, lb_to_id, id_to_lb = load_data(args["Data"]["data_path"])
-    train_dataset = SenseDataset(args, train_data, tokenizer, lb_to_id)
-    eval_dataset = SenseDataset(args, eval_data, tokenizer, lb_to_id)
-    num_labels = len(lb_to_id)
-
-    logger.log(10, f"[data info] train data: {len(train_data['sentence1'])}")
-    logger.log(10, f"[data info] eval data: {len(eval_data['sentence1'])}")
-    logger.log(10, f"[data info] num labels: {num_labels}")
-
-    # 3. 모델 불러오기
+    # 2. 모델 불러오기
     model = get_model(args["Model"]["base_model"])
     model.resize_token_embeddings(len(tokenizer))
 
-    # 4. 트레이너 셋팅
-    os.environ["WANDB_PROJECT"] = args["Wandb"]["project_name"]
-    trainargs = TrainingArguments(
-        output_dir=args["Model"]["w_output_dir"] + args["Wandb"]["run_name"],
-        overwrite_output_dir=False,
-        num_train_epochs=args["Tranining"]["num_train_epochs"],
-        learning_rate=args["Tranining"]["learning_rate"],
-        per_device_train_batch_size=args["Tranining"]["batch_size"],
-        per_device_eval_batch_size=args["Tranining"]["batch_size"],
-        evaluation_strategy="steps",
-        save_strategy="steps",
-        load_best_model_at_end=True,
-        metric_for_best_model="eval_whole macro f1 score",
-        save_total_limit=3,
-        fp16=True,
-        run_name=args["Wandb"]["run_name"],
+    # 3. 데이터 불러오기
+    train_data, eval_data, test_data, lb_to_id, id_to_lb = load_data(
+        args["Data"]["data_path"],
+        args["Data"]["test_data_path"],
     )
 
-    trainer = Trainer(
-        model=model,
-        args=trainargs,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        compute_metrics=compute_metrics,
-    )
+    if args["Flag"]["do_train"] == 0:  # 0: train // 1: test
+        train_dataset = SenseDataset(args, train_data, tokenizer, lb_to_id)
+        eval_dataset = SenseDataset(args, eval_data, tokenizer, lb_to_id)
+        num_labels = len(id_to_lb)
 
-    trainer.train()
+        logger.info(f"start train process")
+        logger.info(f"[data info] train data: {len(train_data['sentence1'])}")
+        logger.info(f"[data info] eval data: {len(eval_data['sentence1'])}")
+        logger.info(f"[data info] num labels: {num_labels}")
+
+        # 4. 트레이너 셋팅
+        os.environ["WANDB_PROJECT"] = args["Wandb"]["project_name"]
+        trainargs = TrainingArguments(
+            output_dir=args["Model"]["w_output_dir"] + args["Wandb"]["run_name"],
+            overwrite_output_dir=False,
+            num_train_epochs=args["Tranining"]["num_train_epochs"],
+            learning_rate=args["Tranining"]["learning_rate"],
+            per_device_train_batch_size=args["Tranining"]["batch_size"],
+            per_device_eval_batch_size=args["Tranining"]["batch_size"],
+            evaluation_strategy="epoch",
+            save_strategy="epoch",
+            load_best_model_at_end=True,
+            metric_for_best_model="eval_whole macro f1 score",
+            save_total_limit=3,
+            fp16=True,
+            run_name=args["Wandb"]["run_name"],
+        )
+
+        trainer = Trainer(
+            model=model,
+            args=trainargs,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            compute_metrics=compute_metrics,
+        )
+
+        trainer.train()
+    elif args["Flag"]["do_train"] == 1:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        model = model.to(device)
+
+        test_dataset = SenseEvalDataset(args, test_data, tokenizer)
+        test_dataloader = DataLoader(test_dataset, batch_size=256, shuffle=False)
+
+        predictions = []
+        with torch.no_grad():
+            for item in track(test_dataloader, description="Inference"):
+                input_ids = item["input_ids"].to(device)
+                att_mask = item["attention_mask"].to(device)
+
+                output = model(input_ids=input_ids, attention_mask=att_mask)
+                output = torch.argmax(output.logits, -1)
+
+                output = output.detach().cpu().tolist()
+                predictions.extend(output)
+
+        submission = pd.read_csv("./data/sample_submission.csv")
+        predictions = [id_to_lb[item] for item in predictions]
+        submission["Target"] = predictions
+
+        path = os.path.join("./output/predictions", args["Wandb"]["run_name"])
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+        path = os.path.join(path, "submission.csv")
+        submission.to_csv(path, index=False)
+    else:
+        logger.info(f"wrong flag {args['Flag']['do_train']}")
+        exit(2)
 
 
 if __name__ == "__main__":

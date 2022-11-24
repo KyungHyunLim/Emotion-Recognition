@@ -19,6 +19,7 @@ from daycon_erc.utils.utils import label_dict
 
 def load_data(
     path: str,
+    test_path: str,
 ) -> Union[Dict, Dict, Dict, Dict]:
     """
     Description:
@@ -26,12 +27,14 @@ def load_data(
 
     Args:
         path (str): 데이터 경로
+        test_path (str): 테스트 데이터 경로
 
     Returns:
         Union[Dict, Dict, Dict, Dict]
     """
 
     data = pd.read_csv(path)
+    test_data = pd.read_csv(test_path)
 
     dialogu_id = pd.unique(data["Dialogue_ID"])
     train_id, eval_id = train_test_split(dialogu_id, test_size=0.1, random_state=42)
@@ -39,16 +42,17 @@ def load_data(
     train_data = data[data["Dialogue_ID"].isin(train_id)]
     eval_data = data[data["Dialogue_ID"].isin(eval_id)]
 
-    train_data = formmating(train_data, train_id)
-    eval_data = formmating(eval_data, eval_id)
+    train_data = formmating(train_data, train_id, "train")
+    eval_data = formmating(eval_data, eval_id, "train")
+    test_data = formmating(test_data, list(pd.unique(test_data["Dialogue_ID"])), "test")
 
     labels = pd.unique(data["Target"])
     lb_to_id, id_to_lb = label_dict(labels)
 
-    return train_data, eval_data, lb_to_id, id_to_lb
+    return train_data, eval_data, test_data, lb_to_id, id_to_lb
 
 
-def formmating(data: pd.DataFrame, dialogu_id: List[int]) -> Dict:
+def formmating(data: pd.DataFrame, dialogu_id: List[int], mode: str) -> Dict:
     """
     Description:
         DataFrame 형태의 데이터를 받아, formatting 후 Dictionary 형태로 반환
@@ -61,6 +65,7 @@ def formmating(data: pd.DataFrame, dialogu_id: List[int]) -> Dict:
     Args:
         data (pd.DataFrame): 데이터
         dialogu_id (int): 데이터 내 포함되어 있는 대화 id
+        mode (str): train or test
 
     Returns:
         Dict
@@ -80,6 +85,7 @@ def formmating(data: pd.DataFrame, dialogu_id: List[int]) -> Dict:
 
             pre_processed_data["sentence1"].append(sentence1)
             pre_processed_data["sentence2"].append(item[1])
-            pre_processed_data["target"].append(item[4])
+            if mode == "train":
+                pre_processed_data["target"].append(item[4])
 
     return pre_processed_data
